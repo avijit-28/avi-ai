@@ -16,7 +16,7 @@
 
 | ID | Experiment Description | Required Evidence | Status | Notes / Logcat Summary |
 | :--- | :--- | :--- | :--- | :--- |
-| **TEL-01** | Can app qualify for Default Phone App role (`ROLE_DIALER`)? | System Role prompt and RoleManager return value | **PASS** | Realme UI (Android 16 API 36) permits third-party default phone role. Verified via `telecom get-default-dialer` and `cmd role get-role-holders android.app.role.DIALER` -> `com.aviai.debug`. |
+| **TEL-01** | Can app qualify for Default Phone App role (`ROLE_DIALER`)? | System Role prompt and RoleManager return value | **PASS** | Successfully verified on Realme P1 5G (Android 16 API 36). Role holder confirmed: `com.aviai.debug` |
 | **TEL-02** | Can app receive incoming call state transitions via `InCallService`? | Timestamped logcat of `Call.Callback` (`STATE_RINGING`, `STATE_DISCONNECTED`) | NOT TESTED | Must re-verify on screen locked & unlocked |
 | **TEL-03** | Can app distinguish ringing, active, and disconnected states reliably? | Sequential call state transition dump | NOT TESTED | Check for OEM-specific phantom state drops |
 | **TEL-04** | Can app honor 15-second delay and execute `Call.answer()`? | Time delta between ringing and answer attempt; answer result | NOT TESTED | Validate that call enters `STATE_ACTIVE` |

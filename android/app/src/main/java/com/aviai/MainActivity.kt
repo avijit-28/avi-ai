@@ -50,47 +50,65 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    DiagnosticDashboard(
-                        onSetDefaultDialer = { requestDefaultDialerRole() }
-                    )
+                    DiagnosticDashboard()
                 }
             }
-        }
-    }
-
-    private fun requestDefaultDialerRole() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val roleManager = getSystemService(Context.ROLE_SERVICE) as? RoleManager
-            if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_DIALER)) {
-                CallController.logEvent("TEL-01: Launching RoleManager request for ROLE_DIALER...")
-                val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
-                startActivity(intent)
-            } else {
-                CallController.logEvent("TEL-01: RoleManager ROLE_DIALER not available on this device!")
-            }
-        } else {
-            val intent = Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER).apply {
-                putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, packageName)
-            }
-            startActivity(intent)
         }
     }
 }
 
 @Composable
-fun DiagnosticDashboard(onSetDefaultDialer: () -> Unit) {
+fun DiagnosticDashboard() {
     val context = androidx.compose.ui.platform.LocalContext.current
     var diagnosticStatus by remember { mutableStateOf(CallCompatibilityChecker.checkStatus(context)) }
     val uiState by CallController.uiState.collectAsState()
     val eventLogs by CallController.eventLogs.collectAsState()
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
+
+    // Auto-refresh when activity resumes
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                diagnosticStatus = CallCompatibilityChecker.checkStatus(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val roleLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        diagnosticStatus = CallCompatibilityChecker.checkStatus(context)
+        CallController.logEvent("Role request returned. Default dialer: ${diagnosticStatus.isDefaultDialer}")
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) {
         diagnosticStatus = CallCompatibilityChecker.checkStatus(context)
         CallController.logEvent("Permissions updated. Ready: ${diagnosticStatus.isReadyForInCallService}")
+    }
+
+    fun requestRole() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = context.getSystemService(Context.ROLE_SERVICE) as? RoleManager
+            if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_DIALER)) {
+                CallController.logEvent("TEL-01: Launching RoleManager request for ROLE_DIALER...")
+                val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
+                roleLauncher.launch(intent)
+            } else {
+                CallController.logEvent("TEL-01: RoleManager ROLE_DIALER not available on this device!")
+            }
+        } else {
+            val intent = Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER).apply {
+                putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, context.packageName)
+            }
+            roleLauncher.launch(intent)
+        }
     }
 
     // Auto-scroll logs to bottom
@@ -144,7 +162,7 @@ fun DiagnosticDashboard(onSetDefaultDialer: () -> Unit) {
 
                 if (!diagnosticStatus.isDefaultDialer) {
                     Button(
-                        onClick = onSetDefaultDialer,
+                        onClick = { requestRole() },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
