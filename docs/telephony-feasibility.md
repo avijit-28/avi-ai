@@ -1,9 +1,14 @@
 # Phase 1 — Telephony Feasibility Test Log
 
-**Target Handset:** Realme P1 5G  
-**Operating System:** Android 16  
+**Target Handset:** Realme P1 5G (`RMX3870`)  
+**Operating System:** Android 16 (API 36)  
+**Build Display ID:** `RMX3870_16.0.5.1300(EX01)`  
+**Chipset / Platform:** MediaTek Dimensity 7050 (`mt6877`), `arm64-v8a`  
+**Total Memory:** ~6 GB (Usable: 5,661,028 kB)  
+**Storage Available:** 29 GB  
+**ADB Status:** Connected and authorized (`GQDMOBRCUKRSYDAI`)  
 **Carriers:** Indian SIMs (Jio / Airtel / Vi / BSNL)  
-**Test Status:** NOT YET TESTED (Gated on Android Studio/SDK setup)  
+**Test Status:** Ready for Phase 1 diagnostic APK deployment  
 
 ---
 
