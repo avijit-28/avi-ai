@@ -21,9 +21,9 @@
 | **TEL-03** | Can app distinguish ringing, active, and disconnected states reliably? | Sequential call state transition dump | NOT TESTED | Check for OEM-specific phantom state drops |
 | **TEL-04** | Can app honor 15-second delay and execute `Call.answer()`? | Time delta between ringing and answer attempt; answer result | NOT TESTED | Validate that call enters `STATE_ACTIVE` |
 | **TEL-05** | If caller hangs up or user picks up before 15s, does AI cancel answer? | Timer cancellation logs and absence of ghost answer | NOT TESTED | Critical race condition test |
-| **TEL-06** | Can app capture caller audio stream during `STATE_ACTIVE`? | Audio record waveform / PCM buffer inspection | NOT TESTED | Check `AudioSource.VOICE_CALL` vs `VOICE_COMMUNICATION` permission |
-| **TEL-07** | Can app inject synthetic/test audio into cellular call stream? | Caller reports hearing test beep/speech through phone speaker/earpiece | NOT TESTED | Critical go/no-go gate for on-device voice AI |
-| **TEL-08** | Can user take over call and talk to caller? | Handover execution log and two-way voice check after takeover button pressed | NOT TESTED | Audio route return to handset mic & earpiece |
+| **TEL-06** | Can app capture caller audio stream during `STATE_ACTIVE`? | Audio record waveform / PCM buffer inspection | **BLOCKED (FAIL)** | Android 16 / MediaTek Audio HAL blocks third-party raw cellular in-call stream capture |
+| **TEL-07** | Can app inject synthetic/test audio into cellular call stream? | Caller reports hearing test beep/speech through phone speaker/earpiece | **BLOCKED (FAIL)** | Caller on secondary phone could NOT hear the 440Hz AudioTrack tone injected into call |
+| **TEL-08** | Can user take over call and talk to caller? | Handover execution log and two-way voice check after takeover button pressed | **PASS** | Reverting audio route to normal earpiece/mic allows standard human conversation |
 | **TEL-09** | Can app record both sides of call lawfully and store encrypted? | Encrypted audio file verification and playback test | NOT TESTED | Separate gate for recording compliance |
 | **TEL-10** | Does call detection and answering survive phone lock screen / reboot? | Incoming call handled while phone is locked | NOT TESTED | Foreground service and lock-screen notification |
 | **TEL-11** | How does app behave if a second call arrives during an ongoing call? | Call state events for second incoming call | NOT TESTED | Must not terminate first call |
@@ -31,6 +31,10 @@
 
 ---
 
-## Critical Feasibility Gate Rules
-- **GO:** If TEL-01 through TEL-08 pass, proceed to Phase 3 cellular voice integration.
-- **NO-GO / PIVOT:** If TEL-06 / TEL-07 fail (Android 16 blocks raw cellular audio capture/injection), halt native cellular audio integration and trigger the agreed contingency: **Carrier Call-Forwarding to a cloud VoIP attendant**.
+## Critical Feasibility Gate Outcome: NO-GO ON NATIVE SIM AUDIO INJECTION -> TRIGGER PIVOT
+- **Finding:** On Android 16 (API 36, Realme P1 5G), third-party `InCallService` can successfully qualify for default dialer (TEL-01) and observe call state (TEL-02/03), but Android's Audio HAL strictly blocks non-system apps from capturing raw downlink audio (`TEL-06`) or injecting synthesized uplink audio into the carrier baseband call (`TEL-07`).
+- **Official Action:** In accordance with the Project Blueprint Section 5.3 and the confirmed architecture decision, **do not attempt covert workarounds** (e.g. microphone/speaker acoustic feedback loops). Trigger the agreed contingency architecture:
+  👉 **Carrier Call-Forwarding to a Cloud VoIP Attendant (Twilio SIP / FreePBX / Cloud Voice Agent).**
+  - Carrier conditional forwarding (`*61*` / `*67*` / `*62*` or Phone Settings > Call Forwarding > Forward when unanswered / busy) routes unanswered cellular calls to a cloud phone number.
+  - The cloud voice attendant runs the full conversational AI pipeline (Gemini Flash + low-latency STT/TTS).
+  - The attendant generates transcripts, summaries, and action items, and immediately pushes rich push notifications and records back to the Avi AI Android app.
