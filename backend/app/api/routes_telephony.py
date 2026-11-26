@@ -4,9 +4,10 @@ import re
 import edge_tts
 from fastapi import APIRouter, Request, Response
 from twilio.twiml.voice_response import VoiceResponse, Gather
-from app.core.database import save_call_record, append_transcript_turn, finalize_call_record, get_call_record
+from app.core.database import save_call_record, append_transcript_turn, finalize_call_record, get_call_record, get_setting
 from app.models.schemas import TranscriptTurn
 from app.conversation.engine import conversation_engine
+from app.conversation.prompts import get_greeting
 from app.extraction.summarizer import call_summarizer
 
 router = APIRouter(prefix="/telephony", tags=["Telephony"])
@@ -47,10 +48,9 @@ async def handle_incoming_call(request: Request):
     save_call_record(call_id=call_sid, caller_number=caller, start_time=start_time, status="IN_PROGRESS")
     active_conversations[call_sid] = []
 
-    greeting = (
-        "Haan ji hello! Main Avijit ka assistant bol raha hoon. "
-        "Avijit abhi phone ke paas nahi hain, to aap batayein kya message note karwaana hai?"
-    )
+    owner_status = get_setting("owner_status", "Away")
+    custom_note = get_setting("custom_status_note", "")
+    greeting = get_greeting(owner_status, custom_note)
 
     # Save AI greeting to transcript
     append_transcript_turn(call_sid, TranscriptTurn(

@@ -1,7 +1,8 @@
 import os
 from typing import List, Dict
 from app.core.config import settings
-from app.conversation.prompts import SYSTEM_INSTRUCTION
+from app.core.database import get_setting
+from app.conversation.prompts import get_system_instruction, SYSTEM_INSTRUCTION
 
 try:
     from google import genai
@@ -53,8 +54,12 @@ class ConversationEngine:
                     parts=[types.Part.from_text(text=latest_caller_input)]
                 ))
 
+                owner_status = get_setting("owner_status", "Away")
+                custom_note = get_setting("custom_status_note", "")
+                dynamic_instruction = get_system_instruction(owner_status, custom_note)
+
                 config = types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
+                    system_instruction=dynamic_instruction,
                     temperature=0.6,
                     max_output_tokens=250, # Keep responses short and conversational for telephone
                 )

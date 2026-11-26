@@ -23,8 +23,48 @@ def init_db():
             transcript_json TEXT
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
     conn.commit()
     conn.close()
+
+def get_setting(key: str, default: str = "") -> str:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)")
+    cursor.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+def set_setting(key: str, value: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)")
+    cursor.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", (key, value))
+    conn.commit()
+    conn.close()
+
+def get_all_settings() -> dict:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)")
+    cursor.execute("SELECT key, value FROM app_settings")
+    rows = cursor.fetchall()
+    conn.close()
+    settings_dict = {
+        "owner_status": "Away",
+        "custom_status_note": "",
+        "assistant_name": "Avi",
+        "forwarding_number": "+1 938 444 8902"
+    }
+    for r in rows:
+        settings_dict[r["key"]] = r["value"]
+    return settings_dict
 
 def save_call_record(call_id: str, caller_number: str, start_time: str, status: str = "IN_PROGRESS"):
     conn = get_connection()

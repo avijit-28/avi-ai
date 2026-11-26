@@ -6,6 +6,7 @@ from app.core.database import init_db
 from app.api.routes_telephony import router as telephony_router
 from app.api.routes_calls import router as calls_router
 from app.api.routes_webphone import router as webphone_router
+from app.api.routes_settings import router as settings_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,6 +41,7 @@ async def health_check():
 # Register API routes
 app.include_router(telephony_router, prefix=settings.API_V1_PREFIX)
 app.include_router(calls_router, prefix=settings.API_V1_PREFIX)
+app.include_router(settings_router, prefix=settings.API_V1_PREFIX)
 app.include_router(webphone_router)
 
 if __name__ == "__main__":
