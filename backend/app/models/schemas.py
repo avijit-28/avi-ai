@@ -24,3 +24,4 @@ class CallRecordResponse(BaseModel):
     summary: Optional[ExtractedCallSummary] = None
     transcript: List[TranscriptTurn] = Field(default_factory=list)
     status: str
+    audio_url: Optional[str] = None

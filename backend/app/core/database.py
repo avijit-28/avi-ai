@@ -76,7 +76,8 @@ def list_call_records() -> List[CallRecordResponse]:
             duration_seconds=r["duration_seconds"],
             summary=summary,
             transcript=transcript,
-            status=r["status"]
+            status=r["status"],
+            audio_url=f"/api/v1/calls/{r['id']}/audio"
         ))
     conn.close()
     return results
@@ -98,5 +99,6 @@ def get_call_record(call_id: str) -> Optional[CallRecordResponse]:
         duration_seconds=r["duration_seconds"],
         summary=summary,
         transcript=transcript,
-        status=r["status"]
+        status=r["status"],
+        audio_url=f"/api/v1/calls/{r['id']}/audio"
     )
