@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
 fun AviAiApp() {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
-    var backendUrl by remember { mutableStateOf("http://127.0.0.1:8000") }
+    var backendUrl by remember { mutableStateOf("https://avi-ai-backend.onrender.com") }
     var callRecords by remember { mutableStateOf<List<UiCallRecord>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("") }
