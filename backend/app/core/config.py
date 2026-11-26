@@ -10,7 +10,7 @@ class Settings:
     
     # Cloud AI
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "gemini-3.5-flash")
+    DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "gemini-3.5-flash-lite")
     
     # Telephony
     TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID", "")

@@ -36,39 +36,47 @@ class ConversationEngine:
                 return "Thank you. I have noted that. What is the best time for Avijit to call you back?"
             return "Samajh gaya. Main ye baat Avijit tak zaroor pahuncha doonga. Kya aap apna naam aur koi aur zaroori jaankari dena chahenge?"
 
-        try:
-            # Build messages for Gemini
-            contents = []
-            for turn in conversation_history:
-                role = "model" if turn.get("role") in ["model", "assistant", "ai"] else "user"
+        for attempt in range(3):
+            try:
+                # Build messages for Gemini
+                contents = []
+                for turn in conversation_history:
+                    role = "model" if turn.get("role") in ["model", "assistant", "ai"] else "user"
+                    contents.append(types.Content(
+                        role=role,
+                        parts=[types.Part.from_text(text=turn.get("content", ""))]
+                    ))
+                
+                # Append latest user speech
                 contents.append(types.Content(
-                    role=role,
-                    parts=[types.Part.from_text(text=turn.get("content", ""))]
+                    role="user",
+                    parts=[types.Part.from_text(text=latest_caller_input)]
                 ))
-            
-            # Append latest user speech
-            contents.append(types.Content(
-                role="user",
-                parts=[types.Part.from_text(text=latest_caller_input)]
-            ))
 
-            config = types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
-                temperature=0.6,
-                max_output_tokens=150, # Keep responses short and conversational for telephone
-            )
+                config = types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0.6,
+                    max_output_tokens=250, # Keep responses short and conversational for telephone
+                )
 
-            response = self.client.models.generate_content(
-                model=settings.DEFAULT_MODEL,
-                contents=contents,
-                config=config
-            )
+                response = self.client.models.generate_content(
+                    model=settings.DEFAULT_MODEL,
+                    contents=contents,
+                    config=config
+                )
 
-            if response and response.text:
-                return response.text.strip()
-            return "I understood. Is there anything else you would like me to note for Avijit?"
-        except Exception as e:
-            print(f"Error in Gemini response generation: {e}")
-            return "Thank you for the information. I have recorded your message and Avijit will get back to you shortly."
+                if response and response.text:
+                    return response.text.strip()
+                return "I understood. Is there anything else you would like me to note for Avijit?"
+            except Exception as e:
+                err_str = str(e)
+                if "503" in err_str and attempt < 2:
+                    import asyncio
+                    await asyncio.sleep(1.0)
+                    continue
+                print(f"Error in Gemini response generation (attempt {attempt+1}): {e}")
+                if attempt == 2:
+                    break
+        return "Thank you for the information. I have recorded your message and Avijit will get back to you shortly."
 
 conversation_engine = ConversationEngine()

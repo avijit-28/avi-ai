@@ -2,6 +2,11 @@ import os
 import sys
 import asyncio
 import datetime
+import tempfile
+import time
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
+import pygame
+import edge_tts
 import pyttsx3
 from dotenv import load_dotenv
 
@@ -16,15 +21,55 @@ from app.models.schemas import TranscriptTurn
 from app.conversation.engine import conversation_engine
 from app.extraction.summarizer import call_summarizer
 
-def speak_audio(text: str):
-    """Speaks the response out loud through computer speakers."""
+import re
+
+# Realistic Human Neural Voice (Indian Hindi / Hinglish / English)
+DEFAULT_NEURAL_VOICE = "hi-IN-MadhurNeural"
+AMBIENCE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "call_ambience.wav"))
+
+async def speak_audio(text: str, voice: str = DEFAULT_NEURAL_VOICE):
+    """
+    Speaks the response out loud with 100% fluent human delivery:
+    - Cleans out all artificial halting punctuation (ellipses, long dashes)
+    - Speeds up to natural conversational speech (+22%)
+    - Plays via pygame.mixer.music with a 4096 buffer for zero jitter/stutter
+    """
+    tmp_path = None
     try:
-        engine = pyttsx3.init()
-        engine.setProperty("rate", 165) # Natural speaking speed
-        engine.say(text)
-        engine.runAndWait()
+        # Strip halting punctuation that causes robotic pauses
+        clean_text = re.sub(r'\.{2,}', '', text)
+        clean_text = re.sub(r'—', ', ', clean_text)
+        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            tmp_path = f.name
+        
+        # Conversational speed +22% for human fluency
+        communicate = edge_tts.Communicate(clean_text, voice, rate="+22%")
+        await communicate.save(tmp_path)
+        
+        # Play via streaming music engine (no buffer underrun/stutter)
+        pygame.mixer.music.load(tmp_path)
+        pygame.mixer.music.set_volume(1.0)
+        pygame.mixer.music.play()
+        
+        while pygame.mixer.music.get_busy():
+            await asyncio.sleep(0.04)
     except Exception as e:
-        print(f"[Audio Output Error: {e}]")
+        # Fallback to local pyttsx3
+        try:
+            engine = pyttsx3.init()
+            engine.setProperty("rate", 175)
+            engine.say(text)
+            engine.runAndWait()
+        except Exception:
+            pass
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
 
 async def run_simulated_call():
     init_db()
@@ -35,19 +80,24 @@ async def run_simulated_call():
     print("=" * 65)
     print("📞 AVI AI — INCOMING CALL SIMULATION SESSION")
     print(f"Incoming call from: {caller_number}")
+    print(f"🎙️  Voice Engine: Studio Human Neural Voice ({DEFAULT_NEURAL_VOICE})")
+    print(f"⚡  Cadence: Fluent Human Telephone Speed (+22%)")
     print("=" * 65)
 
+    # Initialize Pygame audio mixer with solid buffer (4096) for buttery smoothness
+    pygame.mixer.init(frequency=24000, buffer=4096)
+
     greeting = (
-        "Hello! How are you? I'm the Avi AI assistant. Avijit is currently unavailable. "
-        "This call is recorded so I can take a message for him. How can I assist you today?"
+        "Haan ji hello! Main Avijit ka assistant bol raha hoon. "
+        "Avijit abhi phone ke paas nahi hain, to aap batayein kya message note karwaana hai?"
     )
 
     save_call_record(call_id, caller_number, start_time, status="IN_PROGRESS")
     append_transcript_turn(call_id, TranscriptTurn(speaker="AI", text=greeting, timestamp=start_time))
 
     print(f"\n🤖 Avi AI: {greeting}")
-    print("🔊 (Speaking audio out loud...)")
-    speak_audio(greeting)
+    print("🔊 (Speaking in fluent, natural human speed...)")
+    await speak_audio(greeting)
 
     history = [{"role": "model", "content": greeting}]
     turns_count = 0
@@ -71,9 +121,9 @@ async def run_simulated_call():
 
         lower = caller_input.lower()
         if any(w in lower for w in ["bye", "alvida", "thank you", "dhanyavaad", "done", "exit", "quit"]):
-            closing = "Thank you for the message. I have recorded everything for Avijit. Have a wonderful day! Goodbye."
+            closing = "Theek hai ji, maine saari baat note kar li hai aur main Avijit ko turant bata doonga. Shukriya, have a nice day! Bye."
             print(f"\n🤖 Avi AI: {closing}")
-            speak_audio(closing)
+            await speak_audio(closing)
             append_transcript_turn(call_id, TranscriptTurn(speaker="AI", text=closing, timestamp=timestamp))
             break
 
@@ -81,16 +131,24 @@ async def run_simulated_call():
         print("⏳ (Avi AI thinking...)")
         ai_reply = await conversation_engine.generate_response(history, caller_input)
         print(f"\n🤖 Avi AI: {ai_reply}")
-        speak_audio(ai_reply)
+        await speak_audio(ai_reply)
 
         history.append({"role": "model", "content": ai_reply})
         append_transcript_turn(call_id, TranscriptTurn(speaker="AI", text=ai_reply, timestamp=timestamp))
+
+    try:
+        pygame.mixer.quit()
+    except Exception:
+        pass
 
     print("\n" + "=" * 65)
     print("📋 CALL DISCONNECTED — EXTRACTING POST-CALL SUMMARY...")
     print("=" * 65)
 
-    transcript_turns = [{"speaker": h["role"], "text": h["content"]} for h in history]
+    transcript_turns = [
+        {"speaker": "Caller" if h["role"] == "user" else "Avi AI", "text": h["content"]}
+        for h in history
+    ]
     summary = await call_summarizer.summarize_call(caller_number, transcript_turns)
     finalize_call_record(call_id, turns_count * 12, summary, status="COMPLETED")
 

@@ -58,22 +58,30 @@ Transcript:
 {transcript_text}
 """
 
-        try:
-            response = self.client.models.generate_content(
-                model=settings.DEFAULT_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=ExtractedCallSummary,
-                    temperature=0.1
+        for attempt in range(3):
+            try:
+                response = self.client.models.generate_content(
+                    model=settings.DEFAULT_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=ExtractedCallSummary,
+                        temperature=0.1
+                    )
                 )
-            )
 
-            if response and response.text:
-                data = json.loads(response.text)
-                return ExtractedCallSummary(**data)
-        except Exception as e:
-            print(f"Extraction error: {e}")
+                if response and response.text:
+                    data = json.loads(response.text)
+                    return ExtractedCallSummary(**data)
+            except Exception as e:
+                err_str = str(e)
+                if "503" in err_str and attempt < 2:
+                    import asyncio
+                    await asyncio.sleep(1.5)
+                    continue
+                print(f"Extraction error (attempt {attempt+1}): {e}")
+                if attempt == 2:
+                    break
 
         return ExtractedCallSummary(
             caller_name=None,

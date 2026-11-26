@@ -30,12 +30,12 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
         android:icon="@android:drawable/sym_def_app_icon"
-        android:label="Avi AI Telephony Diagnostic"
+        android:label="Avi AI"
         android:roundIcon="@android:drawable/sym_def_app_icon"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
-        <!-- Main Diagnostic Dashboard -->
+        <!-- Main Dashboard & Call Inbox -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -44,31 +44,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
-            <!-- Qualifies for Default Phone App / Dialer Role -->
-            <intent-filter>
-                <action android:name="android.intent.action.DIAL" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.DIAL" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="tel" />
-            </intent-filter>
         </activity>
-
-        <!-- Telecom InCallService -->
-        <service
-            android:name=".telephony.AviInCallService"
-            android:permission="android.permission.BIND_INCALL_SERVICE"
-            android:exported="true">
-            <meta-data
-                android:name="android.telecom.IN_CALL_SERVICE_UI"
-                android:value="true" />
-            <intent-filter>
-                <action android:name="android.telecom.InCallService" />
-            </intent-filter>
-        </service>
 
     </application>
 

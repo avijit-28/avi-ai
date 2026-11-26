@@ -1,4 +1,7 @@
 import datetime
+import base64
+import re
+import edge_tts
 from fastapi import APIRouter, Request, Response
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from app.core.database import save_call_record, append_transcript_turn, finalize_call_record, get_call_record
@@ -7,6 +10,25 @@ from app.conversation.engine import conversation_engine
 from app.extraction.summarizer import call_summarizer
 
 router = APIRouter(prefix="/telephony", tags=["Telephony"])
+
+# Realistic Indian Male Neural Voice
+DEFAULT_MALE_VOICE = "hi-IN-MadhurNeural"
+
+async def generate_speech_bytes(text: str, voice: str = DEFAULT_MALE_VOICE) -> bytes:
+    """Generates high-definition Male neural audio bytes in-memory."""
+    try:
+        clean_text = re.sub(r'\.{2,}', '', text)
+        clean_text = re.sub(r'—', ', ', clean_text)
+        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+        c = edge_tts.Communicate(clean_text, voice, rate="+20%")
+        audio_data = bytearray()
+        async for chunk in c.stream():
+            if chunk['type'] == 'audio':
+                audio_data.extend(chunk['data'])
+        return bytes(audio_data)
+    except Exception as e:
+        print(f"Error generating speech bytes: {e}")
+        return b""
 
 # In-memory turn tracking during active calls
 active_conversations = {}
@@ -26,8 +48,8 @@ async def handle_incoming_call(request: Request):
     active_conversations[call_sid] = []
 
     greeting = (
-        "Hello! How are you? I'm the Avi AI assistant. Avijit is currently unavailable. "
-        "This call is recorded so I can take a message for him. How can I assist you today?"
+        "Haan ji hello! Main Avijit ka assistant bol raha hoon. "
+        "Avijit abhi phone ke paas nahi hain, to aap batayein kya message note karwaana hai?"
     )
 
     # Save AI greeting to transcript
@@ -39,8 +61,8 @@ async def handle_incoming_call(request: Request):
     active_conversations[call_sid].append({"role": "model", "content": greeting})
 
     response = VoiceResponse()
-    # Speak greeting using natural Indian English voice
-    response.say(greeting, voice="Polly.Aditi", language="en-IN")
+    # Speak greeting using natural Polly Aditi (fluent in Hindi & Indian English)
+    response.say(greeting, voice="Polly.Aditi", language="hi-IN")
 
     # Gather caller speech
     gather = Gather(
@@ -49,12 +71,12 @@ async def handle_incoming_call(request: Request):
         method="POST",
         speech_timeout="auto",
         timeout=5,
-        language="en-IN"
+        language="hi-IN"
     )
     response.append(gather)
 
     # If caller remains silent
-    response.say("I didn't hear anything. If you'd like to leave a message, please speak after the tone, or call back later. Goodbye!", voice="Polly.Aditi", language="en-IN")
+    response.say("Aapki aawaz nahi aa rahi hai. Aap baad me dobara call kar sakte hain. Shukriya, alvida!", voice="Polly.Aditi", language="hi-IN")
     response.hangup()
 
     return Response(content=str(response), media_type="application/xml")
@@ -71,14 +93,14 @@ async def handle_speech_turn(request: Request, call_sid: str):
     response = VoiceResponse()
 
     if not caller_speech:
-        response.say("I didn't quite catch that. Could you please repeat your message?", voice="Polly.Aditi", language="en-IN")
+        response.say("Mujhe theek se sunai nahi diya. Kya aap dobara bol sakte hain?", voice="Polly.Aditi", language="hi-IN")
         gather = Gather(
             input="speech",
             action=f"/api/v1/telephony/turn?call_sid={call_sid}",
             method="POST",
             speech_timeout="auto",
             timeout=5,
-            language="en-IN"
+            language="hi-IN"
         )
         response.append(gather)
         return Response(content=str(response), media_type="application/xml")
@@ -106,14 +128,14 @@ async def handle_speech_turn(request: Request, call_sid: str):
     ))
 
     # Speak response
-    response.say(ai_reply, voice="Polly.Aditi", language="en-IN")
+    response.say(ai_reply, voice="Polly.Aditi", language="hi-IN")
 
     # Check if conversation reached natural closing
     lower_caller = caller_speech.lower()
-    is_farewell = any(w in lower_caller for w in ["bye", "thank you", "alvida", "dhanyavaad", "that's all"])
+    is_farewell = any(w in lower_caller for w in ["bye", "thank you", "alvida", "dhanyavaad", "that's all", "shukriya"])
 
     if is_farewell:
-        response.say("Thank you. I have recorded everything for Avijit. Have a great day!", voice="Polly.Aditi", language="en-IN")
+        response.say("Theek hai ji, maine saara message note kar liya hai. Avijit aapse jald hi contact karenge. Have a nice day, bye!", voice="Polly.Aditi", language="hi-IN")
         response.hangup()
     else:
         # Continue turn-taking
@@ -123,10 +145,10 @@ async def handle_speech_turn(request: Request, call_sid: str):
             method="POST",
             speech_timeout="auto",
             timeout=5,
-            language="en-IN"
+            language="hi-IN"
         )
         response.append(gather)
-        response.say("Thank you for your message. Goodbye!", voice="Polly.Aditi", language="en-IN")
+        response.say("Shukriya, main Avijit ko bata doonga. Alvida!", voice="Polly.Aditi", language="hi-IN")
         response.hangup()
 
     return Response(content=str(response), media_type="application/xml")
@@ -153,3 +175,52 @@ async def handle_call_status(request: Request):
     active_conversations.pop(call_sid, None)
 
     return {"status": "ok", "call_sid": call_sid, "summary": summary.model_dump()}
+
+@router.post("/turn_web")
+async def handle_turn_web(request: Request):
+    data = await request.json()
+    history = data.get("history", [])
+    caller_input = data.get("caller_input", "")
+    call_id = data.get("call_id", f"web-{int(datetime.datetime.now().timestamp())}")
+    
+    # Initialize DB record if first turn
+    if len(history) <= 2:
+        save_call_record(call_id=call_id, caller_number="+91-WEB-CALLER", start_time=datetime.datetime.now().isoformat(), status="IN_PROGRESS")
+    
+    # Generate AI response
+    reply = await conversation_engine.generate_response(history, caller_input)
+    
+    # Save turns to DB
+    append_transcript_turn(call_id, TranscriptTurn(speaker="Caller", text=caller_input, timestamp=datetime.datetime.now().isoformat()))
+    append_transcript_turn(call_id, TranscriptTurn(speaker="AI", text=reply, timestamp=datetime.datetime.now().isoformat()))
+    
+    # Generate Male neural speech in-memory
+    audio_bytes = await generate_speech_bytes(reply)
+    audio_b64 = base64.b64encode(audio_bytes).decode('utf-8') if audio_bytes else ""
+
+    # Check if caller or reply indicates call termination
+    lower_caller = caller_input.lower()
+    farewell_words = ["bye", "by", "alvida", "thank", "dhanyavaad", "shukriya", "tata", "goodbye", "bas itna", "rakh", "rakho", "ok bye", "done"]
+    is_farewell = any(w in lower_caller for w in farewell_words) or any(w in reply.lower() for w in ["alvida", "goodbye", "have a nice day", "have a great day", "bye"])
+    
+    return {"reply": reply, "is_farewell": is_farewell, "audio_base64": audio_b64}
+
+@router.get("/tts")
+async def tts_audio_endpoint(text: str):
+    """Streams realistic Male neural speech MP3 audio directly to browser."""
+    audio_bytes = await generate_speech_bytes(text)
+    return Response(content=audio_bytes, media_type="audio/mpeg")
+
+@router.post("/summarize_web")
+async def handle_summarize_web(request: Request):
+    data = await request.json()
+    history = data.get("history", [])
+    call_id = data.get("call_id", "web-call")
+    
+    transcript_turns = [
+        {"speaker": "Caller" if h.get("role") == "user" else "Avi AI", "text": h.get("content", "")}
+        for h in history
+    ]
+    summary = await call_summarizer.summarize_call("+91-WEB-CALLER", transcript_turns)
+    finalize_call_record(call_id, len(history) * 10, summary, status="COMPLETED")
+    return summary.model_dump()
