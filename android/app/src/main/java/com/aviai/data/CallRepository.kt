@@ -2,6 +2,8 @@ package com.aviai.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -32,7 +34,15 @@ data class UiCallRecord(
     val durationSeconds: Int,
     val status: String,
     val summary: UiCallSummary?,
-    val transcript: List<UiTranscriptTurn>
+    val transcript: List<UiTranscriptTurn>,
+    val audioUrl: String? = null
+)
+
+data class UiSettings(
+    val ownerStatus: String = "Away",
+    val customStatusNote: String = "",
+    val assistantName: String = "Avi",
+    val forwardingNumber: String = "+1 938 444 8902"
 )
 
 class CallRepository {
@@ -87,6 +97,8 @@ class CallRepository {
                     ))
                 }
 
+                val audioUrl = if (obj.isNull("audio_url")) null else obj.optString("audio_url")
+
                 records.add(UiCallRecord(
                     id = obj.getString("id"),
                     callerNumber = obj.getString("caller_number"),
@@ -94,11 +106,56 @@ class CallRepository {
                     durationSeconds = obj.optInt("duration_seconds", 0),
                     status = obj.optString("status", "COMPLETED"),
                     summary = summary,
-                    transcript = transcript
+                    transcript = transcript,
+                    audioUrl = audioUrl
                 ))
             }
 
             Result.success(records)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun fetchSettings(backendUrl: String): Result<UiSettings> = withContext(Dispatchers.IO) {
+        try {
+            val url = if (backendUrl.endsWith("/")) "${backendUrl}api/v1/settings" else "$backendUrl/api/v1/settings"
+            val request = Request.Builder().url(url).build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(Exception("HTTP ${response.code}: ${response.message}"))
+            }
+            val body = response.body?.string() ?: "{}"
+            val obj = JSONObject(body)
+            Result.success(
+                UiSettings(
+                    ownerStatus = obj.optString("owner_status", "Away"),
+                    customStatusNote = obj.optString("custom_status_note", ""),
+                    assistantName = obj.optString("assistant_name", "Avi"),
+                    forwardingNumber = obj.optString("forwarding_number", "+1 938 444 8902")
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun saveSettings(backendUrl: String, settings: UiSettings): Result<UiSettings> = withContext(Dispatchers.IO) {
+        try {
+            val url = if (backendUrl.endsWith("/")) "${backendUrl}api/v1/settings" else "$backendUrl/api/v1/settings"
+            val json = JSONObject().apply {
+                put("owner_status", settings.ownerStatus)
+                put("custom_status_note", settings.customStatusNote)
+                put("assistant_name", settings.assistantName)
+                put("forwarding_number", settings.forwardingNumber)
+            }
+            val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+            val request = Request.Builder().url(url).post(body).build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(Exception("HTTP ${response.code}: ${response.message}"))
+            }
+            Result.success(settings)
         } catch (e: Exception) {
             Result.failure(e)
         }
